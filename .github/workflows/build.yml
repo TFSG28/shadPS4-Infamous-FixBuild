@@ -22,6 +22,15 @@ on:
       - ".github/workflows/scripts/symbolize.py"
 
   workflow_dispatch:
+    inputs:
+      march:
+        description: >-
+          CPU target for the Windows build, such as tigerlake (11th Gen Intel Core mobile) or
+          znver4 (Ryzen 7000). Leave empty for the portable x86-64-v3 build. Do not use native:
+          that targets the CPU of the runner doing the build, not your own.
+        type: string
+        default: ""
+        required: false
 
 concurrency:
   group: ci-${{ github.event_name }}-${{ github.ref }}
@@ -31,6 +40,11 @@ concurrency:
 
 env:
   BUILD_TYPE: Release
+  # The CPU the Windows build is compiled for. Portable by default; dispatching the workflow with
+  # the "march" input builds a shadPS4.exe tuned to the CPU named there instead, so that a build
+  # for one machine can be made without a local toolchain. It is part of the cache keys below, as
+  # objects built for one target must never be reused for another.
+  SHADPS4_MARCH: ${{ github.event.inputs.march || 'x86-64-v3' }}
 
 jobs:
   reuse:
@@ -173,9 +187,9 @@ jobs:
       with:
           path: |
             ${{github.workspace}}/build
-          key: ${{ env.cache-name }}-${{ hashFiles('**/CMakeLists.txt', 'cmake/**') }}
+          key: ${{ env.cache-name }}-${{ env.SHADPS4_MARCH }}-${{ hashFiles('**/CMakeLists.txt', 'cmake/**') }}
           restore-keys: |
-            ${{ env.cache-name }}-
+            ${{ env.cache-name }}-${{ env.SHADPS4_MARCH }}-
 
     - name: Cache CMake Build
       uses: hendrikmuhs/ccache-action@v1.2.21
@@ -183,13 +197,13 @@ jobs:
           cache-name: ${{ runner.os }}-sdl-cache-cmake-build
       with:
         append-timestamp: false
-        key: ${{ env.cache-name }}-${{ hashFiles('**/CMakeLists.txt', 'cmake/**') }}
+        key: ${{ env.cache-name }}-${{ env.SHADPS4_MARCH }}-${{ hashFiles('**/CMakeLists.txt', 'cmake/**') }}
 
     - name: Print CPU Info
       run: bash -c "cat /proc/cpuinfo"
 
     - name: Configure CMake
-      run: cmake --fresh -G Ninja -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=ON -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_EXE_LINKER_FLAGS=/MAP
+      run: cmake --fresh -G Ninja -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=ON -DSHADPS4_MARCH=${{env.SHADPS4_MARCH}} -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_EXE_LINKER_FLAGS=/MAP
 
     - name: Build
       run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}} --parallel $env:NUMBER_OF_PROCESSORS
@@ -267,6 +281,11 @@ jobs:
           summary en
           # The job adding the other platforms' builds names them where the marker is.
           echo "**Downloads:** Windows: \`shadPS4.exe\`.<!-- other-platforms-en -->"
+          if [ "$SHADPS4_MARCH" != "x86-64-v3" ]; then
+            echo
+            echo "> [!WARNING]"
+            echo "> This Windows build is compiled for \`$SHADPS4_MARCH\` and will not start on CPUs without those instructions."
+          fi
           echo
           echo "Recommended settings: Readbacks Mode **Precise**, Direct Memory Access **on**, shader cache **on**."
           echo "Don't delete the shader cache (%APPDATA%\\shadPS4\\cache\\CUSA00004): the first time an effect shows up, such as a new power, its shaders are compiled and the game stutters for a moment, and from then on they are loaded at startup."
@@ -286,6 +305,11 @@ jobs:
           echo
           summary tr
           echo "**İndirmeler:** Windows: \`shadPS4.exe\`.<!-- other-platforms-tr -->"
+          if [ "$SHADPS4_MARCH" != "x86-64-v3" ]; then
+            echo
+            echo "> [!WARNING]"
+            echo "> Bu Windows derlemesi \`$SHADPS4_MARCH\` için derlendi; bu komut setine sahip olmayan işlemcilerde açılmaz."
+          fi
           echo
           echo "Önerilen ayarlar: Readbacks Mode **Precise**, Direct Memory Access **açık**, shader önbelleği **açık**."
           echo "Shader önbelleğini (%APPDATA%\\shadPS4\\cache\\CUSA00004) silmeyin: yeni bir güç gibi bir efekt ilk kez göründüğünde shaderları derlenir ve oyun bir an takılır, sonraki açılışlarda ise baştan yüklenir."

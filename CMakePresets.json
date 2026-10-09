@@ -30,6 +30,17 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo"
       }
+    },
+    {
+      "name": "x64-Clang-Release-Native",
+      "displayName": "Clang x64 Release (for this machine)",
+      "description": "Tuned to the CPU that builds it and link time optimized, so it must not be shared",
+      "inherits": ["x64-Clang-Base"],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE": "ON",
+        "SHADPS4_MARCH": "native"
+      }
     }
   ]
 }

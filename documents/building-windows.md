@@ -211,7 +211,7 @@ Your shadps4.exe will be in `shadps4\shared\Build\x64-Clang-Release\`
 
 Go through the MSYS2 installation as normal
 
-If you are building to distribute, please omit `-DCMAKE_CXX_FLAGS="-O2 -march=native"` within the build configuration step.
+If you are building to distribute, please omit `-DSHADPS4_MARCH=native` within the build configuration step.
 
 Normal x86-based computers, follow:
 
@@ -220,7 +220,7 @@ Normal x86-based computers, follow:
 3. Run `pacman -S --needed git mingw-w64-x86_64-binutils mingw-w64-x86_64-clang mingw-w64-x86_64-cmake mingw-w64-x86_64-rapidjson mingw-w64-x86_64-ninja mingw-w64-x86_64-ffmpeg`
 4. Run `git clone --depth 1 --recursive https://github.com/shadps4-emu/shadPS4`
 5. Run `cd shadPS4`
-6. Run `cmake -S . -B build -DCMAKE_C_COMPILER="clang.exe" -DCMAKE_CXX_COMPILER="clang++.exe" -DCMAKE_CXX_FLAGS="-O2 -march=native"`
+6. Run `cmake -S . -B build -DCMAKE_C_COMPILER="clang.exe" -DCMAKE_CXX_COMPILER="clang++.exe" -DCMAKE_CXX_FLAGS="-O2" -DSHADPS4_MARCH=native`
 7. Run `cmake --build build`
 8. To run the finished product, run `./build/shadPS4.exe`
 
@@ -240,3 +240,23 @@ ARM64-based computers, follow:
 These builds may not be easily copyable to people who do not also have a MSYS2 installation.
 If you want to distribute these builds, you need to copy over the correct DLLs into a distribution folder.
 In order to run them, you must be within the MSYS2 shell environment.
+
+## Optimizing the build for your own machine
+
+By default the emulator is built for the `x86-64-v3` instruction set (AVX2), which runs on any
+modern x86-64 CPU. If you are building only for the machine you are on, you can compile for its own
+CPU instead and enable link time optimization:
+
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    -DSHADPS4_MARCH=native \
+    -DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=ON
+cmake --build build
+```
+
+`SHADPS4_MARCH` takes any CPU name your compiler understands, such as `native` (the CPU you build
+on), `tigerlake` (11th Gen Intel Core mobile) or `znver4` (Ryzen 7000). Note that it is applied
+after `CMAKE_CXX_FLAGS`, so pass `-march` through this option instead of `CMAKE_CXX_FLAGS`.
+
+Do not use `native` or `CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE` in builds you share with other
+people: a build made for one CPU crashes with an illegal instruction on any CPU older than it.

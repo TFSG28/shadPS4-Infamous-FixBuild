@@ -61,11 +61,8 @@ endif()
 
 if (ARCHITECTURE STREQUAL "x86_64")
     # Target x86-64-v3 CPU architecture as this is a good balance between supporting performance critical
-    # instructions like AVX2 and maintaining support for older CPUs. Builds that only run on the machine
-    # they are built on can be optimized further with -DSHADPS4_MARCH=native (or a specific CPU, such as
-    # tigerlake or znver4). This is applied after CMAKE_CXX_FLAGS, so -march there has no effect.
-    set(SHADPS4_MARCH "x86-64-v3" CACHE STRING "CPU architecture to build the emulator for")
-    add_compile_options(-march=${SHADPS4_MARCH})
+    # instructions like AVX2 and maintaining support for older CPUs.
+    add_compile_options(-march=x86-64-v3)
 endif()
 
 cmake_host_system_information(RESULT PROC_INFO QUERY PROCESSOR_DESCRIPTION)

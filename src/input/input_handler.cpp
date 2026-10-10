@@ -826,6 +826,9 @@ void ControllerOutput::FinalizeUpdate(u8 gamepad_index) {
         case MOUSE_GYRO_ROLL_MODE:
             SetMouseGyroRollMode(new_button_state);
             break;
+        case MOTION_STICK_MODIFIER:
+            controller->SetMotionStickMode(new_button_state);
+            break;
         case MOTION_TILT_LEFT:
             controller->SetEmulatedTilt(TiltDirection::Left, new_button_state);
             break;

@@ -66,6 +66,10 @@ constexpr float EmulatedTiltSpeed = TwoPi;
 constexpr float EmulatedShakeFrequency = 5.0f;
 constexpr float EmulatedShakeAmplitude = 2.0f * Gravity;
 
+// Turn rate in radians per second when the stick is held fully over in stick motion mode.
+constexpr float StickMotionMaxRate = 2.0f;
+constexpr s32 StickCenter = 128;
+
 Quaternion Multiply(const Quaternion& a, const Quaternion& b) {
     return {a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
             a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
@@ -139,6 +143,13 @@ void GameController::Button(OrbisPadButtonDataOffset button, bool is_pressed) {
 void GameController::Axis(Input::Axis axis, int value, bool smooth) {
     std::lock_guard lock{m_state_mutex};
     const u64 timestamp = Libraries::Kernel::sceKernelGetProcessTime();
+    if (axis == Input::Axis::RightX || axis == Input::Axis::RightY) {
+        m_real_right_stick[axis == Input::Axis::RightX ? 0 : 1] = value;
+        if (m_stick_motion) {
+            UpdateStickMotionLocked();
+            value = StickCenter;
+        }
+    }
     m_state.OnAxis(axis, value, timestamp, smooth);
     PushStateLocked(timestamp);
 }
@@ -171,6 +182,37 @@ void GameController::SetEmulatedShake(bool shaking) {
     std::lock_guard lock{m_state_mutex};
     EnableMotionEmulationLocked();
     m_emu_shake = shaking;
+}
+
+void GameController::SetMotionStickMode(bool enabled) {
+    std::lock_guard lock{m_state_mutex};
+    if (m_stick_motion == enabled) {
+        return;
+    }
+    m_stick_motion = enabled;
+    const u64 timestamp = Libraries::Kernel::sceKernelGetProcessTime();
+    if (enabled) {
+        UpdateStickMotionLocked();
+        m_state.OnAxis(Input::Axis::RightX, StickCenter, timestamp, false);
+        m_state.OnAxis(Input::Axis::RightY, StickCenter, timestamp, false);
+    } else {
+        // Stop the turn, and give the game the stick position it would have had without the mode.
+        std::fill(m_stick_motion_rate, m_stick_motion_rate + 3, 0.0f);
+        m_state.OnAxis(Input::Axis::RightX, m_real_right_stick[0], timestamp, false);
+        m_state.OnAxis(Input::Axis::RightY, m_real_right_stick[1], timestamp, false);
+    }
+    PushStateLocked(timestamp);
+}
+
+void GameController::UpdateStickMotionLocked() {
+    // Same convention as the mouse gyro: stick up pitches like moving the mouse up, stick right
+    // turns like moving the mouse right. The controller is held level, so gravity starts down.
+    EnableMotionEmulationLocked();
+    const float x = static_cast<float>(m_real_right_stick[0] - StickCenter) / 127.0f;
+    const float y = static_cast<float>(m_real_right_stick[1] - StickCenter) / 127.0f;
+    m_stick_motion_rate[0] = -std::clamp(y, -1.0f, 1.0f) * StickMotionMaxRate;
+    m_stick_motion_rate[1] = -std::clamp(x, -1.0f, 1.0f) * StickMotionMaxRate;
+    m_stick_motion_rate[2] = 0.0f;
 }
 
 void GameController::PollState() {
@@ -238,6 +280,10 @@ void GameController::DisconnectController() {
     std::fill(accel_buf, accel_buf + 3, 0.0f);
     accel_buf[1] = 9.81f;
     m_motion_emulated = false;
+    m_stick_motion = false;
+    m_real_right_stick[0] = StickCenter;
+    m_real_right_stick[1] = StickCenter;
+    std::fill(m_stick_motion_rate, m_stick_motion_rate + 3, 0.0f);
     m_next_touch_id = 1;
     m_touch_down_timestamp = 0;
     m_state.connected = false;
@@ -266,6 +312,7 @@ void GameController::EnableMotionEmulationLocked() {
     m_emu_aim = {0.0f, 0.0f, 0.0f, 1.0f};
     m_emu_pose = {0.0f, 0.0f, 0.0f, 1.0f};
     std::fill(m_emu_world_rate, m_emu_world_rate + 3, 0.0f);
+    std::fill(m_stick_motion_rate, m_stick_motion_rate + 3, 0.0f);
     m_emu_roll = 0.0f;
     m_emu_tilt_left = false;
     m_emu_tilt_right = false;
@@ -286,7 +333,12 @@ void GameController::UpdateEmulatedMotionLocked(u64 timestamp) {
 
     // Mouse rotation turns the controller around the world axes, so it aims the same way
     // whichever way the controller is tilted.
-    m_emu_aim = Normalize(Multiply(FromRotationVector(m_emu_world_rate, dt), m_emu_aim));
+    const float world_rate[3] = {
+        m_emu_world_rate[0] + m_stick_motion_rate[0],
+        m_emu_world_rate[1] + m_stick_motion_rate[1],
+        m_emu_world_rate[2] + m_stick_motion_rate[2],
+    };
+    m_emu_aim = Normalize(Multiply(FromRotationVector(world_rate, dt), m_emu_aim));
 
     // Tilting turns the controller over around its own Z axis, left side or right side down.
     const float target_roll =

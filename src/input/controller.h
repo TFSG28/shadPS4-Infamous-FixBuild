@@ -108,6 +108,10 @@ public:
     void SetEmulatedRotationRate(const float world_rate[3]);
     void SetEmulatedTilt(TiltDirection direction, bool held);
     void SetEmulatedShake(bool shaking);
+    // While enabled, the right stick no longer reaches the game as a stick. It drives the gyro
+    // instead (up/down pitch, left/right yaw), and the real stick position is restored when this
+    // is disabled.
+    void SetMotionStickMode(bool enabled);
     void PollState();
     void ResetOrientation();
     void SetLightBarRGB(u8 const r, u8 const g, u8 const b);
@@ -127,6 +131,7 @@ private:
     void UpdateOrientationLocked(u64 timestamp);
     void EnableMotionEmulationLocked();
     void UpdateEmulatedMotionLocked(u64 timestamp);
+    void UpdateStickMotionLocked();
 
     u8 m_next_touch_id{1};
     u64 m_touch_down_timestamp{};
@@ -142,6 +147,14 @@ private:
     bool m_emu_shake{};
     float m_emu_shake_phase{};
     u64 m_last_motion_update{};
+
+    bool m_stick_motion{};
+    // Last real right stick position (0-255, 128 is centered), kept while the stick motion mode
+    // holds it back from the game.
+    s32 m_real_right_stick[2]{128, 128};
+    // Stick motion adds to the mouse rotation instead of replacing it, so both can drive the gyro.
+    float m_stick_motion_rate[3]{};
+
     Colour colour;
     std::optional<Colour> override_colour{};
 
